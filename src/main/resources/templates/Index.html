@@ -8,17 +8,28 @@
     <body>
         <div layout:fragment="body">
             <div class="container mt-3">
-                <div class="card" style="width: 18rem;">
-                    <img src="..." class="card-img-top" alt="...">
-                    <div class="card-body">
-                        <h5 class="card-title">Card title</h5>
-                        <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card’s content.</p>
-                        <a href="#" class="btn btn-primary">Go somewhere</a>
+                <div th:if="${result.correct}">
+                    <div class="row">
+                        <div class="col-md-4 mb-4" th:each="movie : ${result.objects}">
+                            <div class="card h-100">
+                                <img th:src="'https://image.tmdb.org/t/p/w500' + ${movie.poster_path}" class="card-img-top" th:alt="${movie.title}">
+                                <div class="card-body">
+                                    <h5 class="card-title" th:text="${movie.title}">Título</h5>
+                                    <p class="card-text" th:text="${movie.overview}">Resumen</p>
+                                    <p class="card-text"><strong>Popularidad:</strong> <span th:text="${movie.popularity}">0</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div th:if="${!result.correct}">
+                    <div class="alert alert-danger" role="alert">
+                        <span th:text="${result.errorMessage}">Hubo un error al cargar los datos.</span>
                     </div>
                 </div>
             </div>
-
         </div>
+
     </body>
 </html>
 
