@@ -16,7 +16,25 @@
         <div class="container mt-3">
             <div class="card">
                 <div class="card-body">
-                    This is some text within a card body.
+                    <div class="container text-center">
+                        <p class="fs-3">Bienvenido</p>
+                    </div>
+                    <form th:action="@{/Principal/InicioSesion}" th:object="${openSession}" method="post">
+                        <div class="mb-3">
+                            <label class="form-label">Usuario o Email</label>
+                            <input type="text" th:field="*{username}" class="form-control"/>
+                            
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Contraseña</label>
+                            <input type="password" th:field="*{password}" class="form-control"/>
+                           
+                        </div>
+                        <input type="hidden" th:field="*{request_token}" />
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-file-arrow-up-fill"></i> Iniciar sesión
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
