@@ -5,6 +5,7 @@ import Risosu.it.EGDDTheMovieDB25Julio.ML.MovieResponse;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.OpenSession;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.Result;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.Session;
+import Risosu.it.EGDDTheMovieDB25Julio.ML.StatusMessage;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.TokenResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
@@ -59,13 +60,11 @@ public class ControllerPrincipal {
 
         model.addAttribute("result", result);
 
-        // Agrega el perfil (opcional, si quieres mostrar username u otros datos)
         Session perfil = (Session) session.getAttribute("perfil");
         if (perfil != null) {
             model.addAttribute("perfil", perfil);
         }
 
-        // ✅ AGREGA el sessionId al modelo para que el HTML pueda validarlo
         model.addAttribute("sessionId", session.getAttribute("session_id"));
 
         return "Index";
@@ -90,8 +89,102 @@ public class ControllerPrincipal {
         return "Login";
     }
 
+    @GetMapping("/Like")
+    public String CatalogoLike(Model model, HttpSession session) {
+        Result result = new Result();
+        RestTemplate restTemplate = new RestTemplate();
+
+        try {
+            // Obtener el sessionId y el perfil desde la sesión
+            String sessionId = (String) session.getAttribute("session_id");
+            Session perfil = (Session) session.getAttribute("perfil");
+
+            if (sessionId == null || perfil == null) {
+                result.correct = false;
+                result.errorMessage = "Sesión no válida. Por favor inicie sesión.";
+                model.addAttribute("result", result);
+                return "Login"; // redirige a login si no hay sesión
+            }
+
+            // Construir la URL con el account_id y session_id
+            String url = "https://api.themoviedb.org/3/account/" + perfil.getId()
+                    + "/favorite/movies?api_key=" + apiKey + "&session_id=" + sessionId;
+
+            ResponseEntity<MovieResponse> response = restTemplate.getForEntity(url, MovieResponse.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                List<Movie> movies = response.getBody().getResults();
+                result.objects = (List<Object>) (List<?>) movies;
+                model.addAttribute("movies", movies);
+                result.correct = true;
+            } else {
+                result.correct = false;
+                result.errorMessage = "No se pudo obtener la lista de películas favoritas.";
+            }
+        } catch (Exception ex) {
+            result.correct = false;
+            result.errorMessage = ex.getLocalizedMessage();
+        }
+
+        model.addAttribute("result", result);
+        return "MeGusta";
+    }
+
+    @PostMapping("/LikePelicula")
+    public String agregarPeliculaAMegusta(
+            @RequestParam("movieId") int movieId,
+            HttpSession session,
+            Model model
+    ) {
+        Result result = new Result();
+
+        try {
+            Session perfil = (Session) session.getAttribute("perfil");
+            String sessionId = (String) session.getAttribute("session_id");
+
+            if (perfil == null || sessionId == null) {
+                result.correct = false;
+                result.errorMessage = "Sesión no iniciada.";
+                model.addAttribute("result", result);
+                return "Login"; // o como se llame tu página de login
+            }
+
+            String url = "https://api.themoviedb.org/3/account/" + perfil.getId() + "/favorite"
+                    + "?api_key=" + apiKey + "&session_id=" + sessionId;
+
+            RestTemplate restTemplate = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            // Cuerpo de la solicitud
+            Map<String, Object> body = new HashMap<>();
+            body.put("media_type", "movie");
+            body.put("media_id", movieId);
+            body.put("favorite", true);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<StatusMessage> response = restTemplate.postForEntity(url, request, StatusMessage.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                StatusMessage status = response.getBody();
+                result.correct = status.isSuccess();
+                result.errorMessage = status.getStatus_message();
+            } else {
+                result.correct = false;
+                result.errorMessage = "Error al agregar película a favoritos.";
+            }
+
+        } catch (Exception ex) {
+            result.correct = false;
+            result.errorMessage = ex.getLocalizedMessage();
+        }
+
+        model.addAttribute("result", result);
+        return "redirect:/Like"; // redirige a la vista que muestra favoritos
+    }
+
     @PostMapping("/InicioSesion")
-    public String iniciarSesion(@Valid @ModelAttribute OpenSession openSession, Model model, HttpSession session) {
+    public String IniciarSesion(@Valid @ModelAttribute OpenSession openSession, Model model, HttpSession session) {
         String token = crearToken();
         if (token == null) {
             model.addAttribute("result", resultadoError("No se pudo obtener el token."));
