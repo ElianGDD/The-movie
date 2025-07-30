@@ -1,5 +1,6 @@
 package Risosu.it.EGDDTheMovieDB25Julio.Controller;
 
+import Risosu.it.EGDDTheMovieDB25Julio.ML.Language;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.Movie;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.MovieResponse;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.OpenSession;
@@ -9,6 +10,8 @@ import Risosu.it.EGDDTheMovieDB25Julio.ML.StatusMessage;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.TokenResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,22 +29,26 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.SessionAttributes;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 @Controller
 @RequestMapping("/Principal")
+@SessionAttributes({"perfil", "session_id"})
 public class ControllerPrincipal {
 
     private final String apiKey = "4e22bae997b9a2e75be277a85917e01a";
 
     @GetMapping
-    public String index(Model model, HttpSession session) {
+    public String index(@RequestParam(required = false) String lang, Model model, HttpSession session) {
         Result result = new Result();
 
         try {
             RestTemplate restTemplate = new RestTemplate();
-            String url = "https://api.themoviedb.org/3/movie/popular?api_key=" + apiKey;
+            String languageParam = (lang != null && !lang.isBlank()) ? "&language=" + lang : "";
+            String url = "https://api.themoviedb.org/3/movie/popular?api_key=" + apiKey + languageParam;
+
             ResponseEntity<MovieResponse> response = restTemplate.getForEntity(url, MovieResponse.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -59,12 +66,13 @@ public class ControllerPrincipal {
         }
 
         model.addAttribute("result", result);
+        model.addAttribute("selectedLang", lang); // puedes usarlo si quieres marcar el idioma activo
 
+        // Mismos atributos de sesión
         Session perfil = (Session) session.getAttribute("perfil");
         if (perfil != null) {
             model.addAttribute("perfil", perfil);
         }
-
         model.addAttribute("sessionId", session.getAttribute("session_id"));
 
         return "Index";
@@ -89,13 +97,27 @@ public class ControllerPrincipal {
         return "Login";
     }
 
+    @GetMapping("/PerfilUsuario")
+    public String PerfilDetalles(Model model, @ModelAttribute("perfil") Session perfil) {
+
+        if (perfil == null) {
+            return "redirect:/Principal/Login";
+        }
+
+        model.addAttribute("usuario", perfil); // puedes renombrar si prefieres usar 'usuario' en la vista
+        return "Perfil";
+    }
+
     @GetMapping("/Like")
-    public String CatalogoLike(Model model, HttpSession session) {
+    public String CatalogoLike(
+            @RequestParam(required = false) String lang,
+            Model model,
+            HttpSession session
+    ) {
         Result result = new Result();
         RestTemplate restTemplate = new RestTemplate();
 
         try {
-            // Obtener el sessionId y el perfil desde la sesión
             String sessionId = (String) session.getAttribute("session_id");
             Session perfil = (Session) session.getAttribute("perfil");
 
@@ -103,12 +125,14 @@ public class ControllerPrincipal {
                 result.correct = false;
                 result.errorMessage = "Sesión no válida. Por favor inicie sesión.";
                 model.addAttribute("result", result);
-                return "Login"; // redirige a login si no hay sesión
+                return "Login";
             }
 
-            // Construir la URL con el account_id y session_id
+            String languageParam = (lang != null && !lang.isBlank()) ? "&language=" + lang : "";
             String url = "https://api.themoviedb.org/3/account/" + perfil.getId()
-                    + "/favorite/movies?api_key=" + apiKey + "&session_id=" + sessionId;
+                    + "/favorite/movies?api_key=" + apiKey
+                    + "&session_id=" + sessionId
+                    + languageParam;
 
             ResponseEntity<MovieResponse> response = restTemplate.getForEntity(url, MovieResponse.class);
 
@@ -127,6 +151,8 @@ public class ControllerPrincipal {
         }
 
         model.addAttribute("result", result);
+        model.addAttribute("selectedLang", lang);
+
         return "MeGusta";
     }
 
@@ -180,46 +206,63 @@ public class ControllerPrincipal {
         }
 
         model.addAttribute("result", result);
-        return "redirect:/Like"; // redirige a la vista que muestra favoritos
+        return "redirect:/Principal";
     }
 
     @PostMapping("/InicioSesion")
-    public String IniciarSesion(@Valid @ModelAttribute OpenSession openSession, Model model, HttpSession session) {
+    public String IniciarSesion(
+            @Valid @ModelAttribute OpenSession openSession,
+            @RequestParam(required = false) String lang,
+            Model model,
+            HttpSession session
+    ) {
+        Result result = new Result();
+
         String token = crearToken();
         if (token == null) {
-            model.addAttribute("result", resultadoError("No se pudo obtener el token."));
+            model.addAttribute("result", result.errorMessage = "No se pudo obtener el token.");
             return "Login";
         }
 
         if (!verificarToken(openSession, token)) {
-            model.addAttribute("result", resultadoError("Credenciales inválidas."));
+            model.addAttribute("result", result.errorMessage = "Credenciales inválidas.");
             return "Login";
         }
 
         String sessionId = crearSesion(token);
         if (sessionId == null) {
-            model.addAttribute("result", resultadoError("No se pudo crear la sesión."));
+            model.addAttribute("result", result.errorMessage = "No se pudo crear la sesión.");
             return "Login";
         }
 
         session.setAttribute("session_id", sessionId);
-
-        // Guardar perfil
         Session perfil = obtenerPerfilSesion(sessionId);
         if (perfil != null) {
             session.setAttribute("perfil", perfil);
+        }
+
+        // 🔽 Guardar idioma seleccionado en sesión si está presente
+        if (lang != null && !lang.isBlank()) {
+            session.setAttribute("selected_lang", lang);
         }
 
         return "redirect:/Principal";
     }
 
     @GetMapping("/DescripcionPelicula/{idPelicula}")
-    public String descripcionPelicula(@PathVariable int idPelicula, Model model, HttpSession session) {
+    public String descripcionPelicula(
+            @PathVariable int idPelicula,
+            @RequestParam(required = false) String lang,
+            Model model,
+            HttpSession session
+    ) {
         Result result = new Result();
 
         try {
             RestTemplate restTemplate = new RestTemplate();
-            String url = "https://api.themoviedb.org/3/movie/" + idPelicula + "?api_key=" + apiKey;
+            String languageParam = (lang != null && !lang.isBlank()) ? "&language=" + lang : "";
+            String url = "https://api.themoviedb.org/3/movie/" + idPelicula + "?api_key=" + apiKey + languageParam;
+
             ResponseEntity<Movie> response = restTemplate.getForEntity(url, Movie.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -236,22 +279,14 @@ public class ControllerPrincipal {
         }
 
         model.addAttribute("result", result);
+        model.addAttribute("selectedLang", lang); // puedes usarlo para marcar idioma en la vista
 
-        // Agregar perfil si existe
         Session perfil = (Session) session.getAttribute("perfil");
         if (perfil != null) {
             model.addAttribute("perfil", perfil);
         }
 
         return "DescripcionPelicula";
-    }
-
-    // Métodos auxiliares
-    private Result resultadoError(String mensaje) {
-        Result result = new Result();
-        result.correct = false;
-        result.errorMessage = mensaje;
-        return result;
     }
 
     private String crearToken() {
@@ -318,4 +353,25 @@ public class ControllerPrincipal {
             return null;
         }
     }
+
+    @ModelAttribute("idiomas")
+    public List<Language> cargarIdiomas() {
+        List<Language> idiomas = new ArrayList<>();
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            String url = "https://api.themoviedb.org/3/configuration/languages?api_key=" + apiKey;
+
+            ResponseEntity<Language[]> response = restTemplate.getForEntity(url, Language[].class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                idiomas = Arrays.asList(response.getBody());
+            }
+
+        } catch (Exception ex) {
+            System.err.println("Error al obtener idiomas: " + ex.getMessage());
+        }
+
+        return idiomas;
+    }
+
 }

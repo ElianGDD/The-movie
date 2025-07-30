@@ -1,15 +1,43 @@
 <!DOCTYPE html>
-<!--
-Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
-Click nbfs://nbhost/SystemFileSystem/Templates/Other/html.html to edit this template
--->
-<html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
     <head>
-        <title>TODO supply a title</title>
+        <title>Perfil de usuario</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     </head>
     <body>
-        <div>TODO write content</div>
+        <div layout:fragment="body">
+            <div class="container mt-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-5">
+                                <div class="d-flex align-items-center mb-3">
+                                    <img th:src="'https://www.gravatar.com/avatar/' + ${perfil.avatar.gravatar.hash} + '?s=80&d=identicon'" 
+                                         alt="Avatar"
+                                         class="rounded-circle border me-3"
+                                         style="width: 80px; height: 80px; object-fit: cover;">
+                                    <h2 class="mb-0">Perfil</h2>
+                                </div>
+
+                                <p><strong>Username:</strong> <span th:text="${usuario.username}"></span></p>
+                                <p><strong>ID:</strong> <span th:text="${usuario.id}"></span></p>
+                            </div>
+
+                            <div class="col-md-7">
+                                <div class="card">
+                                    Hola
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
     </body>
 </html>
