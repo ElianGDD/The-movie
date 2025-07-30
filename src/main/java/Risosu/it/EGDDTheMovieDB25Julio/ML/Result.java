@@ -8,4 +8,5 @@ public class Result {
     public String errorMessage;
     public Object object;
     public List<Object> objects;
+    public Exception ex;
 }

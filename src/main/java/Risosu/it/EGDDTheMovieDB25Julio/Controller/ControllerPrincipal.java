@@ -4,9 +4,13 @@ import Risosu.it.EGDDTheMovieDB25Julio.ML.Movie;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.MovieResponse;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.OpenSession;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.Result;
+import Risosu.it.EGDDTheMovieDB25Julio.ML.Session;
 import Risosu.it.EGDDTheMovieDB25Julio.ML.TokenResponse;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -28,141 +32,197 @@ import org.springframework.web.client.RestTemplate;
 @RequestMapping("/Principal")
 public class ControllerPrincipal {
 
+    private final String apiKey = "4e22bae997b9a2e75be277a85917e01a";
+
     @GetMapping
-    public String Index(Model model) {
+    public String index(Model model, HttpSession session) {
         Result result = new Result();
 
         try {
             RestTemplate restTemplate = new RestTemplate();
-            String apiKey = "4e22bae997b9a2e75be277a85917e01a";
             String url = "https://api.themoviedb.org/3/movie/popular?api_key=" + apiKey;
-
             ResponseEntity<MovieResponse> response = restTemplate.getForEntity(url, MovieResponse.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 List<Movie> movies = response.getBody().getResults();
                 result.correct = true;
                 result.objects = (List<Object>) (List<?>) movies;
-
                 model.addAttribute("movies", movies);
             } else {
                 result.correct = false;
                 result.errorMessage = "No se pudo obtener la lista de películas.";
             }
-
         } catch (RestClientException ex) {
             result.correct = false;
             result.errorMessage = "Error al consumir la API: " + ex.getMessage();
         }
 
         model.addAttribute("result", result);
+
+        // Agrega el perfil (opcional, si quieres mostrar username u otros datos)
+        Session perfil = (Session) session.getAttribute("perfil");
+        if (perfil != null) {
+            model.addAttribute("perfil", perfil);
+        }
+
+        // ✅ AGREGA el sessionId al modelo para que el HTML pueda validarlo
+        model.addAttribute("sessionId", session.getAttribute("session_id"));
+
         return "Index";
     }
 
+    @ModelAttribute
+    public void addGlobalAttributes(Model model, HttpSession session) {
+        Session perfil = (Session) session.getAttribute("perfil");
+        if (perfil != null) {
+            model.addAttribute("perfil", perfil);
+        }
+
+        String sessionId = (String) session.getAttribute("session_id");
+        if (sessionId != null) {
+            model.addAttribute("sessionId", sessionId);
+        }
+    }
+
     @GetMapping("/Login")
-    public String Login(Model model) {
-        Result result = new Result();
-        OpenSession openSession = new OpenSession();
-        
-        model.addAttribute("openSession", openSession);
+    public String login(Model model) {
+        model.addAttribute("openSession", new OpenSession());
         return "Login";
     }
 
-    @GetMapping("/DescripcionPelicula/{idPelicula}")
-    public String descripcionPelicula(@PathVariable int idPelicula, Model model) {
-        Result result = new Result();
-
-        try {
-            RestTemplate restTemplate = new RestTemplate();
-            String apiKey = "4e22bae997b9a2e75be277a85917e01a";
-            String url = "https://api.themoviedb.org/3/movie/" + idPelicula + "?api_key=" + apiKey;
-
-            ResponseEntity<Movie> response = restTemplate.getForEntity(url, Movie.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Movie movie = response.getBody();
-                result.correct = true;
-                result.object = movie;
-
-                model.addAttribute("movie", movie);
-            } else {
-                result.correct = false;
-                result.errorMessage = "No se pudo obtener la información de la película.";
-            }
-
-        } catch (Exception ex) {
-            result.correct = false;
-            result.errorMessage = ex.getMessage();
+    @PostMapping("/InicioSesion")
+    public String iniciarSesion(@Valid @ModelAttribute OpenSession openSession, Model model, HttpSession session) {
+        String token = crearToken();
+        if (token == null) {
+            model.addAttribute("result", resultadoError("No se pudo obtener el token."));
+            return "Login";
         }
 
-        model.addAttribute("result", result);
-        return "DescripcionPelicula";
+        if (!verificarToken(openSession, token)) {
+            model.addAttribute("result", resultadoError("Credenciales inválidas."));
+            return "Login";
+        }
+
+        String sessionId = crearSesion(token);
+        if (sessionId == null) {
+            model.addAttribute("result", resultadoError("No se pudo crear la sesión."));
+            return "Login";
+        }
+
+        session.setAttribute("session_id", sessionId);
+
+        // Guardar perfil
+        Session perfil = obtenerPerfilSesion(sessionId);
+        if (perfil != null) {
+            session.setAttribute("perfil", perfil);
+        }
+
+        return "redirect:/Principal";
     }
 
-    @PostMapping("/InicioSesion")
-    public String iniciarSesion(
-            @Valid @ModelAttribute OpenSession openSession,
-            Model model) {
+    @GetMapping("/DescripcionPelicula/{idPelicula}")
+    public String descripcionPelicula(@PathVariable int idPelicula, Model model, HttpSession session) {
         Result result = new Result();
+
         try {
             RestTemplate restTemplate = new RestTemplate();
-            String apiKey = "4e22bae997b9a2e75be277a85917e01a";
-            String urlLogin = "https://api.themoviedb.org/3/authentication/token/validate_with_login?api_key=" + apiKey;
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<OpenSession> request = new HttpEntity<>(openSession, headers);
-
-            ResponseEntity<TokenResponse> response
-                    = restTemplate.exchange(urlLogin, HttpMethod.POST, request, TokenResponse.class);
+            String url = "https://api.themoviedb.org/3/movie/" + idPelicula + "?api_key=" + apiKey;
+            ResponseEntity<Movie> response = restTemplate.getForEntity(url, Movie.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 result.correct = true;
                 result.object = response.getBody();
+                model.addAttribute("movie", result.object);
             } else {
                 result.correct = false;
-                result.errorMessage = "Credenciales inválidas o sin respuesta";
+                result.errorMessage = "No se pudo obtener la información de la película.";
             }
         } catch (Exception ex) {
             result.correct = false;
             result.errorMessage = ex.getMessage();
         }
-        
-      try {
-            RestTemplate restTemplate = new RestTemplate();
-            String apiKey = "4e22bae997b9a2e75be277a85917e01a";
-            String url = "https://api.themoviedb.org/3/movie/popular?api_key=" + apiKey;
-
-            ResponseEntity<MovieResponse> response = restTemplate.getForEntity(url, MovieResponse.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                List<Movie> movies = response.getBody().getResults();
-                result.correct = true;
-                result.objects = (List<Object>) (List<?>) movies;
-
-                model.addAttribute("movies", movies);
-            } else {
-                result.correct = false;
-                result.errorMessage = "No se pudo obtener la lista de películas.";
-            }
-
-        } catch (RestClientException ex) {
-            result.correct = false;
-            result.errorMessage = "Error al consumir la API: " + ex.getMessage();
-        }
 
         model.addAttribute("result", result);
-        return "Index";
-    }
-    
-    public String CrearToken(){
-           RestTemplate restTemplate = new RestTemplate();
-            String apiKey = "4e22bae997b9a2e75be277a85917e01a";
-            String urlCreateToken ="https://api.themoviedb.org/3/authentication/guest_session/new";
-            
-//            ResponseEntity<TokenResponse> response = restTemplate.getForEntity(url, toke)
-        return "hola";
+
+        // Agregar perfil si existe
+        Session perfil = (Session) session.getAttribute("perfil");
+        if (perfil != null) {
+            model.addAttribute("perfil", perfil);
+        }
+
+        return "DescripcionPelicula";
     }
 
+    // Métodos auxiliares
+    private Result resultadoError(String mensaje) {
+        Result result = new Result();
+        result.correct = false;
+        result.errorMessage = mensaje;
+        return result;
+    }
+
+    private String crearToken() {
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            String url = "https://api.themoviedb.org/3/authentication/token/new?api_key=" + apiKey;
+            ResponseEntity<TokenResponse> response = restTemplate.getForEntity(url, TokenResponse.class);
+            return response.getBody() != null ? response.getBody().getRequest_token() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean verificarToken(OpenSession openSession, String token) {
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            String url = "https://api.themoviedb.org/3/authentication/token/validate_with_login?api_key=" + apiKey;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("username", openSession.getUsername());
+            body.put("password", openSession.getPassword());
+            body.put("request_token", token);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<TokenResponse> response = restTemplate.exchange(url, HttpMethod.POST, request, TokenResponse.class);
+
+            return response.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String crearSesion(String validatedToken) {
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            String url = "https://api.themoviedb.org/3/authentication/session/new?api_key=" + apiKey;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("request_token", validatedToken);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+
+            return response.getBody() != null ? response.getBody().get("session_id").toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Session obtenerPerfilSesion(String sessionId) {
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            String url = "https://api.themoviedb.org/3/account?api_key=" + apiKey + "&session_id=" + sessionId;
+
+            ResponseEntity<Session> response = restTemplate.getForEntity(url, Session.class);
+            return response.getBody();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
 }
