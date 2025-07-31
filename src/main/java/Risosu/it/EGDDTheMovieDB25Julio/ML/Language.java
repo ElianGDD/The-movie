@@ -1,18 +1,25 @@
 package Risosu.it.EGDDTheMovieDB25Julio.ML;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Language {
-    String iso_629_1;
+
+    @JsonProperty("iso_639_1")
+    private String iso639_1;
+    @JsonProperty("english_name")
     String english_name;
+    @JsonProperty("name")
     String name;
 
-    public String getIso_629_1() {
-        return iso_629_1;
+    public String getIso639_1() {
+        return iso639_1;
     }
 
-    public void setIso_629_1(String iso_629_1) {
-        this.iso_629_1 = iso_629_1;
+    public void setIso639_1(String iso639_1) {
+        this.iso639_1 = iso639_1;
     }
+
+    
 
     public String getEnglish_name() {
         return english_name;
@@ -29,7 +36,5 @@ public class Language {
     public void setName(String name) {
         this.name = name;
     }
-    
-    
-    
+
 }
